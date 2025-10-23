@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessageSquare, Instagram, Bell, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 
 export default function Dashboard() {
   const [whatsappCount, setWhatsappCount] = useState(0);
@@ -110,9 +111,9 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 mt-20 flex-1">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Métricas Enlev</h1>
           <p className="text-muted-foreground">Visão geral do sistema em tempo real</p>
@@ -197,6 +198,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+      <Footer />
     </div>
   );
 }

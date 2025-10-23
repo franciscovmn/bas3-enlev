@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 import { Loader2, Upload } from "lucide-react";
 
 export default function Profile() {
@@ -101,9 +102,9 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 mt-20 flex-1">
         <div className="max-w-2xl mx-auto">
           <Card className="shadow-lg">
             <CardHeader>
@@ -170,6 +171,7 @@ export default function Profile() {
           </Card>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }
