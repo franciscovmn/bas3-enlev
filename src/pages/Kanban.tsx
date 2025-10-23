@@ -128,7 +128,11 @@ export default function Kanban() {
     });
 
     if (rpcError) {
-      console.error("Erro ao rotacionar fila:", rpcError);
+      toast.error("Erro ao processar solicitação");
+      if (import.meta.env.DEV) {
+        console.error("Debug - Erro ao rotacionar fila:", rpcError);
+      }
+      return;
     }
 
     toast.success("Atendimento assumido! Você foi movido para o final da fila.");

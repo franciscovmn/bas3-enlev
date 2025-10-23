@@ -8,6 +8,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Footer } from "@/components/Footer";
+import { z } from "zod";
+
+const signInSchema = z.object({
+  email: z.string().email("Email inválido").max(255, "Email muito longo"),
+  password: z.string().min(1, "Senha obrigatória"),
+});
+
+const signUpSchema = z.object({
+  email: z.string().email("Email inválido").max(255, "Email muito longo"),
+  password: z.string()
+    .min(8, "Senha deve ter no mínimo 8 caracteres")
+    .max(72, "Senha muito longa"),
+  nome: z.string()
+    .trim()
+    .min(2, "Nome deve ter no mínimo 2 caracteres")
+    .max(100, "Nome muito longo"),
+});
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -36,15 +53,26 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const validation = signInSchema.safeParse({ email, password });
+      if (!validation.success) {
+        toast.error(validation.error.errors[0].message);
+        setLoading(false);
+        return;
+      }
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Bem-vindo de volta!");
+      const { error } = await supabase.auth.signInWithPassword({
+        email: validation.data.email,
+        password: validation.data.password,
+      });
+
+      if (error) {
+        toast.error("Email ou senha incorretos");
+      } else {
+        toast.success("Bem-vindo de volta!");
+      }
+    } catch (error) {
+      toast.error("Erro ao fazer login");
     }
 
     setLoading(false);
@@ -54,22 +82,37 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: {
-          nome_completo: nome,
-          role: "corretor",
-        },
-      },
-    });
+    try {
+      const validation = signUpSchema.safeParse({ email, password, nome });
+      if (!validation.success) {
+        toast.error(validation.error.errors[0].message);
+        setLoading(false);
+        return;
+      }
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Conta criada! Verifique seu email.");
+      const { error } = await supabase.auth.signUp({
+        email: validation.data.email,
+        password: validation.data.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            nome_completo: validation.data.nome,
+            role: "corretor",
+          },
+        },
+      });
+
+      if (error) {
+        if (error.message.includes("already registered")) {
+          toast.error("Email já cadastrado");
+        } else {
+          toast.error("Erro ao criar conta");
+        }
+      } else {
+        toast.success("Conta criada! Verifique seu email.");
+      }
+    } catch (error) {
+      toast.error("Erro ao criar conta");
     }
 
     setLoading(false);

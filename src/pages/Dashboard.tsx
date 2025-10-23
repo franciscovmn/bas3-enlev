@@ -98,10 +98,19 @@ export default function Dashboard() {
   };
 
   const loadQueueOrder = async () => {
+    const { data: rolesData } = await supabase
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "corretor");
+
+    if (!rolesData) return;
+
+    const corretorIds = rolesData.map(r => r.user_id);
+
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .eq("role", "corretor")
+      .in("id", corretorIds)
       .order("posicao_fila", { ascending: true })
       .limit(5);
 

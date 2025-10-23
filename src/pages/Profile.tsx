@@ -9,12 +9,25 @@ import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Loader2, Upload } from "lucide-react";
+import { z } from "zod";
+
+const profileSchema = z.object({
+  nome_completo: z.string()
+    .trim()
+    .min(2, "Nome deve ter no mínimo 2 caracteres")
+    .max(100, "Nome muito longo"),
+});
+
+const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB
+const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 export default function Profile() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [nome, setNome] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
     loadProfile();
@@ -32,6 +45,31 @@ export default function Profile() {
       if (data) {
         setProfile(data);
         setNome(data.nome_completo);
+        
+        // Load avatar with signed URL
+        if (data.foto_url) {
+          const fileName = data.foto_url.split('/').pop();
+          if (fileName) {
+            const { data: signedData } = await supabase.storage
+              .from("avatars")
+              .createSignedUrl(fileName, 3600); // 1 hour expiry
+            
+            if (signedData) {
+              setAvatarUrl(signedData.signedUrl);
+            }
+          }
+        }
+      }
+
+      // Load user role from user_roles table
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (roleData) {
+        setUserRole(roleData.role);
       }
     }
   };
@@ -40,16 +78,27 @@ export default function Profile() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ nome_completo: nome })
-      .eq("id", profile.id);
+    try {
+      const validation = profileSchema.safeParse({ nome_completo: nome });
+      if (!validation.success) {
+        toast.error(validation.error.errors[0].message);
+        setLoading(false);
+        return;
+      }
 
-    if (error) {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ nome_completo: validation.data.nome_completo })
+        .eq("id", profile.id);
+
+      if (error) {
+        toast.error("Erro ao atualizar perfil");
+      } else {
+        toast.success("Perfil atualizado!");
+        loadProfile();
+      }
+    } catch (error) {
       toast.error("Erro ao atualizar perfil");
-    } else {
-      toast.success("Perfil atualizado!");
-      loadProfile();
     }
 
     setLoading(false);
@@ -59,35 +108,48 @@ export default function Profile() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploading(true);
-
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${profile.id}-${Math.random()}.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(fileName, file, { upsert: true });
-
-    if (uploadError) {
-      toast.error("Erro ao fazer upload da foto");
-      setUploading(false);
+    // Validate file type
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      toast.error("Formato inválido. Use JPEG, PNG, WebP ou GIF");
       return;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(fileName);
+    // Validate file size
+    if (file.size > FILE_SIZE_LIMIT) {
+      toast.error("Arquivo muito grande. Máximo: 5MB");
+      return;
+    }
 
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ foto_url: publicUrl })
-      .eq("id", profile.id);
+    setUploading(true);
 
-    if (updateError) {
+    try {
+      const fileExt = file.name.split(".").pop();
+      const sanitizedExt = fileExt?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const fileName = `${profile.id}/${Date.now()}.${sanitizedExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) {
+        toast.error("Erro ao fazer upload da foto");
+        setUploading(false);
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ foto_url: fileName })
+        .eq("id", profile.id);
+
+      if (updateError) {
+        toast.error("Erro ao atualizar foto");
+      } else {
+        toast.success("Foto atualizada!");
+        loadProfile();
+      }
+    } catch (error) {
       toast.error("Erro ao atualizar foto");
-    } else {
-      toast.success("Foto atualizada!");
-      loadProfile();
     }
 
     setUploading(false);
@@ -113,7 +175,7 @@ export default function Profile() {
             <CardContent className="space-y-6">
               <div className="flex flex-col items-center gap-4">
                 <Avatar className="h-32 w-32">
-                  <AvatarImage src={profile.foto_url} />
+                  <AvatarImage src={avatarUrl || undefined} />
                   <AvatarFallback className="text-2xl">
                     {profile.nome_completo[0]}
                   </AvatarFallback>
@@ -151,7 +213,7 @@ export default function Profile() {
 
                 <div className="space-y-2">
                   <Label>Função</Label>
-                  <Input value={profile.role} disabled />
+                  <Input value={userRole} disabled />
                 </div>
 
                 <div className="space-y-2">
