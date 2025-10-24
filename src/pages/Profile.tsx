@@ -45,19 +45,34 @@ export default function Profile() {
       if (data) {
         setProfile(data);
         setNome(data.nome_completo);
-        
+
         // Load avatar with signed URL
         if (data.foto_url) {
-          const fileName = data.foto_url.split('/').pop();
-          if (fileName) {
-            const { data: signedData } = await supabase.storage
-              .from("avatars")
-              .createSignedUrl(fileName, 3600); // 1 hour expiry
-            
-            if (signedData) {
-              setAvatarUrl(signedData.signedUrl);
+          const filePath = data.foto_url;
+          if (filePath) {
+            console.log("Attempting to get signed URL for path:", filePath); // Log para verificar o path
+            try {
+              const { data: signedData, error: signError } = await supabase.storage
+                .from("avatars")
+                .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+              if (signError) {
+                console.error("Error getting signed URL:", signError);
+                toast.error("Erro ao carregar a prévia da foto.");
+                setAvatarUrl(null); // Limpa a URL se der erro
+              } else if (signedData) {
+                setAvatarUrl(signedData.signedUrl);
+              }
+            } catch (signCatchError) {
+              console.error("Exception getting signed URL:", signCatchError);
+              toast.error("Erro inesperado ao carregar foto.");
+              setAvatarUrl(null);
             }
+          } else {
+             setAvatarUrl(null); // Clear avatar if foto_url is present but empty path
           }
+        } else {
+           setAvatarUrl(null); // Clear avatar if foto_url is null
         }
       }
 
@@ -67,7 +82,7 @@ export default function Profile() {
         .select("role")
         .eq("user_id", user.id)
         .single();
-      
+
       if (roleData) {
         setUserRole(roleData.role);
       }
@@ -76,6 +91,7 @@ export default function Profile() {
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profile) return; // Add check for profile existence
     setLoading(true);
 
     try {
@@ -92,13 +108,15 @@ export default function Profile() {
         .eq("id", profile.id);
 
       if (error) {
+        console.error("Error updating profile:", error); // Log update error
         toast.error("Erro ao atualizar perfil");
       } else {
         toast.success("Perfil atualizado!");
-        loadProfile();
+        await loadProfile(); // Reload profile after update
       }
     } catch (error) {
-      toast.error("Erro ao atualizar perfil");
+       console.error("Exception updating profile:", error); // Log exception
+      toast.error("Erro inesperado ao atualizar perfil");
     }
 
     setLoading(false);
@@ -125,6 +143,12 @@ export default function Profile() {
     try {
       const fileExt = file.name.split(".").pop();
       const sanitizedExt = fileExt?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      // Garantir que profile e profile.id existam
+      if (!profile || !profile.id) {
+         toast.error("Erro: Perfil do usuário não carregado. Tente recarregar a página.");
+         setUploading(false);
+         return;
+      }
       const fileName = `${profile.id}/${Date.now()}.${sanitizedExt}`;
 
       const { error: uploadError } = await supabase.storage
@@ -132,10 +156,13 @@ export default function Profile() {
         .upload(fileName, file, { upsert: true });
 
       if (uploadError) {
+       console.error("Supabase upload error:", uploadError); // Log do erro de upload
         toast.error("Erro ao fazer upload da foto");
         setUploading(false);
         return;
       }
+
+     console.log("Upload successful, file path:", fileName); // Confirmação de upload
 
       const { error: updateError } = await supabase
         .from("profiles")
@@ -143,13 +170,20 @@ export default function Profile() {
         .eq("id", profile.id);
 
       if (updateError) {
-        toast.error("Erro ao atualizar foto");
+       console.error("Error updating profile with foto_url:", updateError); // Log do erro de update
+        toast.error("Erro ao atualizar foto no perfil");
       } else {
         toast.success("Foto atualizada!");
-        loadProfile();
+        // We need to wait for Supabase to process the update before reloading
+        // A small delay might help, or ideally, Supabase functions/triggers
+        // would handle invalidation, but for now, let's add a small delay.
+        setTimeout(() => {
+          loadProfile(); // Chamada para recarregar o perfil e a nova URL assinada
+        }, 1000); // Delay 1 second before reloading profile
       }
     } catch (error) {
-      toast.error("Erro ao atualizar foto");
+     console.error("Exception during avatar upload:", error); // Log de exceção geral
+      toast.error("Erro inesperado ao atualizar foto");
     }
 
     setUploading(false);
@@ -175,9 +209,10 @@ export default function Profile() {
             <CardContent className="space-y-6">
               <div className="flex flex-col items-center gap-4">
                 <Avatar className="h-32 w-32">
-                  <AvatarImage src={avatarUrl || undefined} />
+                  {/* Add key prop to force re-render when avatarUrl changes */}
+                  <AvatarImage key={avatarUrl} src={avatarUrl || undefined} />
                   <AvatarFallback className="text-2xl">
-                    {profile.nome_completo[0]}
+                    {nome ? nome[0] : '?'} {/* Use nome state for fallback */}
                   </AvatarFallback>
                 </Avatar>
                 <Label htmlFor="avatar-upload" className="cursor-pointer">
@@ -192,7 +227,7 @@ export default function Profile() {
                   <Input
                     id="avatar-upload"
                     type="file"
-                    accept="image/*"
+                    accept={ALLOWED_FILE_TYPES.join(',')} // More specific accept attribute
                     className="hidden"
                     onChange={handleUploadAvatar}
                     disabled={uploading}
@@ -213,7 +248,7 @@ export default function Profile() {
 
                 <div className="space-y-2">
                   <Label>Função</Label>
-                  <Input value={userRole} disabled />
+                  <Input value={userRole || "Carregando..."} disabled />
                 </div>
 
                 <div className="space-y-2">
@@ -224,7 +259,7 @@ export default function Profile() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={loading}
+                  disabled={loading || uploading} // Disable while uploading too
                 >
                   {loading ? "Salvando..." : "Salvar Alterações"}
                 </Button>
