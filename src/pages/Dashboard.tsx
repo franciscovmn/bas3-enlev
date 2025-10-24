@@ -201,7 +201,7 @@ export default function Dashboard() {
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-20 flex-1">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Métricas enleve</h1>
+          <h1 className="text-3xl font-bold mb-2">Métricas ENLEVE</h1>
           <p className="text-muted-foreground">Visão geral do sistema em tempo real</p>
         </div>
 
