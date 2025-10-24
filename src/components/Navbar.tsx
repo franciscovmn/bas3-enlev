@@ -24,7 +24,7 @@ export function Navbar() {
   };
 
   const navItems = [
-    { path: "/", icon: Home, label: "Metricas Enlev" },
+    { path: "/", icon: Home, label: "Metricas enleve" },
     { path: "/kanban", icon: LayoutGrid, label: "Análise Leads" },
     { path: "/perfil", icon: User, label: "Perfil" },
   ];
@@ -37,7 +37,7 @@ export function Navbar() {
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-sm">E</span>
             </div>
-            <span className="font-semibold text-lg hidden sm:inline">Enlev CRM</span>
+            <span className="font-semibold text-lg hidden sm:inline">enleve CRM</span>
           </div>
 
           {!isMobile && (

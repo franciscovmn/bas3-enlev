@@ -128,7 +128,7 @@ export default function Auth() {
               <span className="text-primary-foreground font-bold text-xl">E</span>
             </div>
           </div>
-          <CardTitle className="text-2xl text-center">Enlev CRM</CardTitle>
+          <CardTitle className="text-2xl text-center">enleve CRM</CardTitle>
           <CardDescription className="text-center">
             Sistema de gerenciamento imobiliário
           </CardDescription>
