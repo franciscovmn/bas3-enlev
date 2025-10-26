@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Home, LayoutGrid, User, LogOut } from "lucide-react";
+import { Menu, X, Home, LayoutGrid, User, LogOut, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,25 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    checkAdminStatus();
+  }, []);
+
+  const checkAdminStatus = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: roles } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .single();
+
+    setIsAdmin(!!roles);
+  };
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -27,6 +46,7 @@ export function MobileNav() {
     { path: "/", icon: Home, label: "Dashboard" },
     { path: "/kanban", icon: LayoutGrid, label: "Análise Leads" },
     { path: "/perfil", icon: User, label: "Perfil" },
+    ...(isAdmin ? [{ path: "/gerenciar-usuarios", icon: UserCog, label: "Gerenciar Usuários" }] : []),
   ];
 
   return (

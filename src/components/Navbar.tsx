@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, LayoutGrid, User, LogOut } from "lucide-react";
+import { Home, LayoutGrid, User, LogOut, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileNav } from "./MobileNav";
@@ -7,11 +7,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useState, useEffect } from "react";
 
 export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    checkAdminStatus();
+  }, []);
+
+  const checkAdminStatus = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: roles } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .single();
+
+    setIsAdmin(!!roles);
+  };
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -27,6 +47,7 @@ export function Navbar() {
     { path: "/", icon: Home, label: "Metricas ENLEVE" },
     { path: "/kanban", icon: LayoutGrid, label: "Análise Leads" },
     { path: "/perfil", icon: User, label: "Perfil" },
+    ...(isAdmin ? [{ path: "/gerenciar-usuarios", icon: UserCog, label: "Gerenciar Usuários" }] : []),
   ];
 
   return (
