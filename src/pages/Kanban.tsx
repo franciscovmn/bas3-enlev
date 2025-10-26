@@ -6,13 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, Phone } from "lucide-react";
+import { Clock, Phone, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function Kanban() {
   const [automatizados, setAutomatizados] = useState<any[]>([]);
@@ -22,6 +23,9 @@ export default function Kanban() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const isMobile = useIsMobile();
+  const [isHistoricoOpen, setIsHistoricoOpen] = useState(false);
+  const [historicoChat, setHistoricoChat] = useState<any[]>([]);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
 
   useEffect(() => {
     loadCurrentUser();
@@ -103,14 +107,9 @@ export default function Kanban() {
   };
 
   const handleAssumirEspera = async (atendimentoId: number) => {
-    if (!currentUser || !userProfile) return;
+    if (!currentUser) return;
 
-    if (userProfile.posicao_fila !== 1) {
-      toast.error("Não é sua vez na fila!");
-      return;
-    }
-
-    const { error: updateError } = await supabase
+    const { error } = await supabase
       .from("atendimento")
       .update({
         status: "Com Corretor",
@@ -118,24 +117,11 @@ export default function Kanban() {
       })
       .eq("id", atendimentoId);
 
-    if (updateError) {
+    if (error) {
       toast.error("Erro ao assumir atendimento");
-      return;
+    } else {
+      toast.success("Atendimento assumido!");
     }
-
-    const { error: rpcError } = await (supabase.rpc as any)("rotacionar_fila", {
-      corretor_id: currentUser.id,
-    });
-
-    if (rpcError) {
-      toast.error("Erro ao processar solicitação");
-      if (import.meta.env.DEV) {
-        console.error("Debug - Erro ao rotacionar fila:", rpcError);
-      }
-      return;
-    }
-
-    toast.success("Atendimento assumido! Você foi movido para o final da fila.");
   };
 
   const handleFinalizar = async (atendimentoId: number) => {
@@ -149,6 +135,26 @@ export default function Kanban() {
     } else {
       toast.success("Atendimento finalizado!");
     }
+  };
+
+  const handleVerHistorico = async (sessionId: string) => {
+    setLoadingHistorico(true);
+    setIsHistoricoOpen(true);
+    
+    const { data, error } = await supabase
+      .from("n8n_chat_histories")
+      .select("message, created_at")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      toast.error("Erro ao carregar histórico");
+      setHistoricoChat([]);
+    } else {
+      setHistoricoChat(data || []);
+    }
+    
+    setLoadingHistorico(false);
   };
 
   const getChannelBadge = (canal: string) => {
@@ -203,28 +209,51 @@ export default function Kanban() {
                   </div>
                 )}
                 {type === "auto" && (
-                  <Button
-                    onClick={() => handleAssumirAutomatizado(atendimento.id)}
-                    className="w-full"
-                    variant="outline"
-                  >
-                    Assumir
-                  </Button>
-                )}
-                {type === "espera" && (
                   <div className="flex gap-2">
                     <Button
-                      onClick={() => setSelectedReport(atendimento.relatorio_ia)}
+                      onClick={() => handleVerHistorico(atendimento.session_id)}
                       variant="outline"
                       size="sm"
                       className="flex-1"
                     >
-                      Ver Relatório
+                      <MessageSquare className="h-4 w-4 mr-1" />
+                      Histórico Chatbot
                     </Button>
+                    <Button
+                      onClick={() => handleAssumirAutomatizado(atendimento.id)}
+                      className="flex-1"
+                      variant="outline"
+                      size="sm"
+                    >
+                      Assumir
+                    </Button>
+                  </div>
+                )}
+                {type === "espera" && (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => setSelectedReport(atendimento.relatorio_ia)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                      >
+                        Ver Relatório
+                      </Button>
+                      <Button
+                        onClick={() => handleVerHistorico(atendimento.session_id)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                      >
+                        <MessageSquare className="h-4 w-4 mr-1" />
+                        Histórico
+                      </Button>
+                    </div>
                     <Button
                       onClick={() => handleAssumirEspera(atendimento.id)}
                       size="sm"
-                      className="flex-1"
+                      className="w-full"
                     >
                       Assumir
                     </Button>
@@ -297,13 +326,25 @@ export default function Kanban() {
                         </div>
                         {getChannelBadge(atendimento.canal)}
                       </div>
-                      <Button
-                        onClick={() => handleAssumirAutomatizado(atendimento.id)}
-                        className="w-full"
-                        variant="outline"
-                      >
-                        Assumir
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => handleVerHistorico(atendimento.session_id)}
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                        >
+                          <MessageSquare className="h-4 w-4 mr-1" />
+                          Histórico
+                        </Button>
+                        <Button
+                          onClick={() => handleAssumirAutomatizado(atendimento.id)}
+                          className="flex-1"
+                          variant="outline"
+                          size="sm"
+                        >
+                          Assumir
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -342,19 +383,30 @@ export default function Kanban() {
                           })}
                         </p>
                       )}
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => setSelectedReport(atendimento.relatorio_ia)}
-                          variant="outline"
-                          size="sm"
-                          className="flex-1"
-                        >
-                          Ver Relatório
-                        </Button>
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => setSelectedReport(atendimento.relatorio_ia)}
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                          >
+                            Ver Relatório
+                          </Button>
+                          <Button
+                            onClick={() => handleVerHistorico(atendimento.session_id)}
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                          >
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            Histórico
+                          </Button>
+                        </div>
                         <Button
                           onClick={() => handleAssumirEspera(atendimento.id)}
                           size="sm"
-                          className="flex-1"
+                          className="w-full"
                         >
                           Assumir
                         </Button>
@@ -426,6 +478,43 @@ export default function Kanban() {
           <div className="prose prose-sm dark:prose-invert max-w-none">
             <p className="whitespace-pre-wrap">{selectedReport}</p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isHistoricoOpen} onOpenChange={setIsHistoricoOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Histórico do Chatbot</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="h-[60vh] pr-4">
+            {loadingHistorico ? (
+              <p className="text-center text-muted-foreground">Carregando histórico...</p>
+            ) : historicoChat.length === 0 ? (
+              <p className="text-center text-muted-foreground">Histórico vazio.</p>
+            ) : (
+              <div className="space-y-4">
+                {historicoChat.map((msg, idx) => {
+                  // NOTE: A estrutura do JSON em 'message' pode precisar de ajuste.
+                  // Assumindo: { sender: 'user' | 'bot', text: 'mensagem_texto' }
+                  const messageData = msg.message as any;
+                  const isUser = messageData?.sender === 'user';
+                  
+                  return (
+                    <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] space-y-1`}>
+                        <div className={`rounded-lg p-3 ${isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                          <p className="text-sm whitespace-pre-wrap">{messageData?.text || JSON.stringify(messageData)}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground px-1">
+                          {format(new Date(msg.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>

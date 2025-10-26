@@ -1,38 +1,25 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageSquare, Instagram, Bell, TrendingUp } from "lucide-react";
+import { MessageSquare, Instagram, Bell, TrendingUp, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 
-// Definindo um tipo para o perfil que inclui a URL assinada da foto
-type ProfileWithSignedUrl = {
-  created_at: string | null;
-  foto_url: string | null; // Nome do arquivo no Supabase Storage
-  id: string;
-  nome_completo: string;
-  posicao_fila: number | null;
-  // role: string; // Removido pois agora está em user_roles
-  updated_at: string | null;
-  signedFotoUrl?: string | null; // URL assinada para exibir a imagem
-};
 
 export default function Dashboard() {
   const [whatsappCount, setWhatsappCount] = useState(0);
   const [instagramCount, setInstagramCount] = useState(0);
   const [topPreferences, setTopPreferences] = useState<any[]>([]);
-  // Usando o novo tipo para o estado
-  const [queueProfiles, setQueueProfiles] = useState<ProfileWithSignedUrl[]>([]);
+  const [corretoresAtivos, setCorretoresAtivos] = useState<any[]>([]);
 
   useEffect(() => {
     loadMetrics();
     loadTopPreferences();
-    loadQueueOrder();
+    loadCorretoresAtivos();
 
-    // Real-time subscription for new leads
     const channel = supabase
       .channel("dashboard-updates")
       .on(
@@ -49,7 +36,6 @@ export default function Dashboard() {
             icon: <Bell className="h-4 w-4" />,
           });
           loadMetrics();
-          loadQueueOrder(); // Recarrega a fila também
         }
       )
       .on(
@@ -61,19 +47,7 @@ export default function Dashboard() {
         },
         () => {
           loadMetrics();
-          // Considerar recarregar a fila aqui também se outras mudanças em 'atendimento' afetam a fila
-          // loadQueueOrder();
-        }
-      )
-       .on( // Adiciona um listener para mudanças nos perfis (ex: mudança de posição na fila ou foto)
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "profiles",
-        },
-        () => {
-          loadQueueOrder();
+          loadCorretoresAtivos();
         }
       )
       .subscribe();
@@ -126,73 +100,53 @@ export default function Dashboard() {
     }
   };
 
-    // *** FUNÇÃO MODIFICADA ***
-    const loadQueueOrder = async () => {
-    console.log("Iniciando loadQueueOrder..."); // Log 1
+  const loadCorretoresAtivos = async () => {
+    const { data: atendimentos } = await supabase
+      .from("atendimento")
+      .select("corretor_responsavel_id")
+      .eq("status", "Com Corretor");
 
-    const { data: rolesData, error: rolesError } = await supabase
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", "corretor");
+    if (!atendimentos) return;
 
-    if (rolesError) {
-      console.error("Erro ao buscar roles:", rolesError.message); // Log de erro
-      toast.error("Erro ao buscar corretores.");
+    const contagem = atendimentos.reduce((acc: any, curr) => {
+      if (curr.corretor_responsavel_id) {
+        acc[curr.corretor_responsavel_id] = (acc[curr.corretor_responsavel_id] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    const corretorIds = Object.keys(contagem);
+
+    if (corretorIds.length === 0) {
+      setCorretoresAtivos([]);
       return;
     }
 
-    if (!rolesData || rolesData.length === 0) {
-      console.warn("Nenhum usuário com role 'corretor' encontrado."); // Log 2
-      setQueueProfiles([]); // Limpa a fila se não houver corretores
-      return;
-    }
-
-    const corretorIds = rolesData.map(r => r.user_id);
-    console.log("IDs dos Corretores encontrados:", corretorIds); // Log 3
-
-    const { data: profilesData, error: profilesError } = await supabase
+    const { data: profiles } = await supabase
       .from("profiles")
-      .select("*")
-      .in("id", corretorIds)
-      .order("posicao_fila", { ascending: true, nullsFirst: true }) // Explicitamente colocar nulos primeiro
-      .limit(5);
+      .select("id, nome_completo, foto_url")
+      .in("id", corretorIds);
 
-    if (profilesError) {
-      console.error("Erro ao buscar perfis da fila:", profilesError.message); // Log de erro
-      toast.error("Erro ao carregar a fila.");
-      return;
-    }
-
-    console.log("Perfis retornados pela query:", profilesData); // Log 4 (O MAIS IMPORTANTE)
-
-    if (profilesData && profilesData.length > 0) { // Verifica se profilesData não é nulo e tem itens
-      const profilesWithSignedUrls = await Promise.all(
-        profilesData.map(async (profile) => {
-          // ... (lógica para gerar signed url - MANTENHA IGUAL)
-          let signedUrl: string | null = null;
-          if (profile.foto_url) {
-            const { data: signedData, error: signError } = await supabase.storage
-              .from("avatars")
-              .createSignedUrl(profile.foto_url, 3600);
-            if (signError) {
-              console.error(`Erro ao gerar URL assinada para ${profile.foto_url}:`, signError.message);
-            } else {
-              signedUrl = signedData.signedUrl;
-            }
+    const corretoresComContagem = await Promise.all(
+      (profiles || []).map(async (profile) => {
+        let signedFotoUrl: string | null = null;
+        if (profile.foto_url) {
+          const { data: signedData } = await supabase.storage
+            .from("avatars")
+            .createSignedUrl(profile.foto_url, 3600);
+          if (signedData) {
+            signedFotoUrl = signedData.signedUrl;
           }
-          return {
-            ...profile,
-            signedFotoUrl: signedUrl,
-          };
-        })
-      );
+        }
+        return {
+          ...profile,
+          quantidade: contagem[profile.id] || 0,
+          signedFotoUrl,
+        };
+      })
+    );
 
-      console.log("Perfis processados (com URLs):", profilesWithSignedUrls); // Log 5 (O que vimos antes)
-      setQueueProfiles(profilesWithSignedUrls);
-    } else {
-      console.log("Nenhum perfil retornado pela query ou array vazio."); // Log 6
-      setQueueProfiles([]); // Limpa a fila se não houver dados
-    }
+    setCorretoresAtivos(corretoresComContagem);
   };
 
 
@@ -248,53 +202,30 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* *** CARD DA ORDEM DA FILA MODIFICADO *** */}
         <Card className="shadow-md">
           <CardHeader>
-            <CardTitle>Ordem da Fila</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5" />
+              Atendimentos por Corretor
+            </CardTitle>
+            <CardDescription>Corretores com atendimentos ativos</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {/* Verifica se a fila está vazia */}
-              {queueProfiles.length === 0 ? (
-                 <p className="text-muted-foreground text-center py-4">A fila está vazia.</p>
-              ) : (
-                // Mapeia os perfis para renderizar cada item da fila
-                queueProfiles.map((profile, index) => (
-                  <div
-                    key={profile.id}
-                    className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                  >
-                    <div className="relative">
-                      {/* Componente Avatar para exibir a foto ou a inicial */}
-                      <Avatar>
-                        {/* Tenta carregar a imagem usando a URL assinada */}
-                        <AvatarImage src={profile.signedFotoUrl || undefined} alt={profile.nome_completo} />
-                        {/* Fallback: Mostra a primeira letra do nome se não houver foto ou URL */}
-                        <AvatarFallback>
-                           {profile.nome_completo ? profile.nome_completo[0].toUpperCase() : '?'}
-                        </AvatarFallback>
-                      </Avatar>
-                      {/* Indicador verde para o próximo da fila */}
-                      {index === 0 && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success ring-2 ring-background animate-pulse" />
-                      )}
-                    </div>
-                    {/* Informações do usuário (Nome e Posição) */}
-                    <div className="flex-1">
-                      <p className="font-medium">{profile.nome_completo}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Posição {profile.posicao_fila ?? 'N/A'} {/* Mostra N/A se posição for null */}
-                      </p>
-                    </div>
-                    {/* Badge "Próximo" para o primeiro da fila */}
-                    {index === 0 && (
-                      <Badge variant="default" className="bg-success text-success-foreground">
-                        Próximo
-                      </Badge>
-                    )}
-                  </div>
-                ))
+            <div className="space-y-3">
+              {corretoresAtivos.map((corretor) => (
+                <div key={corretor.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <Avatar>
+                    <AvatarImage src={corretor.signedFotoUrl || undefined} alt={corretor.nome_completo} />
+                    <AvatarFallback>{corretor.nome_completo[0]}</AvatarFallback>
+                  </Avatar>
+                  <span className="flex-1 font-medium">{corretor.nome_completo}</span>
+                  <Badge variant="secondary" className="font-semibold">
+                    {corretor.quantidade}
+                  </Badge>
+                </div>
+              ))}
+              {corretoresAtivos.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">Nenhum atendimento ativo no momento</p>
               )}
             </div>
           </CardContent>
