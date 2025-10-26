@@ -56,27 +56,38 @@ export default function AdminUsers() {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const validation = inviteSchema.safeParse({ email, role });
-      if (!validation.success) {
-        toast.error(validation.error.errors[0].message);
-        setLoading(false);
-        return;
-      }
+    // --- Adicionar verificação de sessão ---
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
+      toast.error("Sessão inválida ou expirada. Faça login novamente.");
+      setLoading(false);
+      // Opcional: redirecionar para login
+      // navigate("/auth");
+      return;
+    }
+    // --- Fim da verificação ---
 
-      const { data, error } = await supabase.functions.invoke("invite-user", {
+    // Validação do Zod (como já existe)
+    const validation = inviteSchema.safeParse({ email, role });
+    // ... (resto da validação) ...
+
+    try {
+      const { error: functionError } = await supabase.functions.invoke('invite-user', {
         body: { email: validation.data.email, role: validation.data.role },
       });
 
-      if (error) {
-        toast.error("Erro ao enviar convite: " + error.message);
+      if (functionError) {
+        console.error("Erro Raw da Função:", functionError); // Log do erro completo
+        // Tenta pegar uma mensagem mais específica, se houver
+        const specificMessage = functionError.context?.message || functionError.message;
+        toast.error(`Erro ao enviar convite: ${specificMessage || 'Verifique os logs da função.'}`);
       } else {
         toast.success("Convite enviado com sucesso!");
-        setEmail("");
-        setRole("corretor");
+        setEmail(""); // Limpar campo após sucesso
       }
-    } catch (error: any) {
-      toast.error("Erro ao enviar convite: " + error.message);
+    } catch (catchError: any) {
+      console.error("Erro Catch:", catchError);
+      toast.error(`Erro inesperado ao chamar a função: ${catchError.message}`);
     }
 
     setLoading(false);
