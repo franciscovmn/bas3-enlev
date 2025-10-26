@@ -56,34 +56,42 @@ export default function AdminUsers() {
     e.preventDefault();
     setLoading(true);
 
-    // --- Adicionar verificação de sessão ---
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !sessionData.session) {
+    // 1. Pega a sessão ATUAL (importante para ter o token mais recente)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    // 2. Verifica se a sessão é válida
+    if (sessionError || !session) {
       toast.error("Sessão inválida ou expirada. Faça login novamente.");
       setLoading(false);
       // Opcional: redirecionar para login
       // navigate("/auth");
       return;
     }
-    // --- Fim da verificação ---
 
     // Validação do Zod (como já existe)
     const validation = inviteSchema.safeParse({ email, role });
-    // ... (resto da validação) ...
+    if (!validation.success) {
+      toast.error(validation.error.errors[0].message);
+      setLoading(false);
+      return;
+    }
 
     try {
+      // 3. Chama a função INCLUINDO o header Authorization explicitamente
       const { error: functionError } = await supabase.functions.invoke('invite-user', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}` // <--- Adiciona esta parte
+        },
         body: { email: validation.data.email, role: validation.data.role },
       });
 
       if (functionError) {
-        console.error("Erro Raw da Função:", functionError); // Log do erro completo
-        // Tenta pegar uma mensagem mais específica, se houver
+        console.error("Erro Raw da Função:", functionError);
         const specificMessage = functionError.context?.message || functionError.message;
         toast.error(`Erro ao enviar convite: ${specificMessage || 'Verifique os logs da função.'}`);
       } else {
         toast.success("Convite enviado com sucesso!");
-        setEmail(""); // Limpar campo após sucesso
+        setEmail("");
       }
     } catch (catchError: any) {
       console.error("Erro Catch:", catchError);
